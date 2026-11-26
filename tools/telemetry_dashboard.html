@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FOC 云台遥测仪表盘</title>
+<style>
+:root{
+  --bg:#f6f6f3; --card:#ffffff; --line:#e4e4dd; --tx:#1b1b18; --tx2:#70706a; --tx3:#a0a09a;
+  --m0:#378ADD; --m1:#1D9E75; --warn:#E24B4A; --ok:#639922; --amber:#BA7517;
+  --r:14px;
+}
+@media (prefers-color-scheme:dark){
+  :root{ --bg:#131312; --card:#1c1c1a; --line:#31312d; --tx:#f1f0ea; --tx2:#9b9b94; --tx3:#6d6d67;
+         --m0:#5FA8F5; --m1:#3DC79A; }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);
+  font-family:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  font-size:14px;line-height:1.5;padding:20px 22px 40px}
+h1{font-size:16px;font-weight:500;margin:0}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.spacer{flex:1}
+button{font:inherit;font-size:13px;padding:7px 14px;border-radius:9px;cursor:pointer;
+  border:1px solid var(--line);background:var(--card);color:var(--tx);transition:.15s}
+button:hover{border-color:var(--tx3)}
+button.primary{background:var(--m0);border-color:var(--m0);color:#fff}
+button.primary:hover{opacity:.9}
+button:disabled{opacity:.45;cursor:not-allowed}
+.status{font-size:12px;color:var(--tx2);display:flex;align-items:center;gap:6px}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--tx3)}
+.dot.on{background:var(--ok)}
+.dot.err{background:var(--warn)}
+
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+@media (max-width:760px){.grid{grid-template-columns:1fr}}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px}
+.head{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.tag{width:3px;height:16px;border-radius:2px}
+.name{font-size:13px;font-weight:500}
+.mode{margin-left:auto;font-size:11px;padding:2px 8px;border-radius:20px;
+  background:var(--bg);color:var(--tx2);border:1px solid var(--line)}
+
+.big{display:flex;align-items:baseline;gap:4px;margin-bottom:2px}
+.big .v{font-size:40px;font-weight:400;letter-spacing:-1px;font-variant-numeric:tabular-nums;line-height:1.1}
+.big .u{font-size:14px;color:var(--tx2)}
+.sub{font-size:12px;color:var(--tx2);margin-bottom:14px;font-variant-numeric:tabular-nums}
+
+.metrics{display:flex;flex-direction:column;gap:9px}
+.m{display:grid;grid-template-columns:62px 1fr 78px;align-items:center;gap:10px}
+.m .k{font-size:12px;color:var(--tx2)}
+.m .v{font-size:12px;text-align:right;font-variant-numeric:tabular-nums;color:var(--tx)}
+.track{height:6px;border-radius:3px;background:var(--bg);overflow:hidden;position:relative}
+.fill{height:100%;border-radius:3px;transition:width .12s linear}
+.mid{position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--line)}
+
+.chartcard{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  padding:14px 16px 8px;margin-bottom:14px}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--tx2);margin-bottom:6px}
+.legend i{display:inline-block;width:14px;height:2px;vertical-align:middle;margin-right:5px;border-radius:1px}
+canvas{width:100%;display:block}
+
+.paste{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px}
+.paste textarea{width:100%;min-height:64px;resize:vertical;font-family:ui-monospace,Consolas,monospace;
+  font-size:12px;line-height:1.5;padding:9px 11px;border-radius:9px;border:1px solid var(--line);
+  background:var(--bg);color:var(--tx);outline:none}
+.paste textarea:focus{border-color:var(--m0)}
+.hint{font-size:12px;color:var(--tx3);margin-top:8px}
+
+.dec{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+@media (max-width:760px){.dec{grid-template-columns:1fr}}
+.dec table{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
+.dec td{padding:4px 0;border-bottom:1px solid var(--line)}
+.dec td:first-child{color:var(--tx2);width:88px}
+.dec td:last-child{text-align:right}
+.dec h3{font-size:12px;font-weight:500;margin:0 0 6px}
+
+.log{font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--tx2);
+  max-height:66px;overflow:auto;white-space:pre-wrap;margin-top:10px}
+.log b{color:var(--warn);font-weight:400}
+</style>
+</head>
+<body>
+<h2 class="sr">FOC 云台两台电机的实时遥测仪表盘，含位置、速度、电流、故障码解码</h2>
+
+<div class="bar">
+  <button id="btnConn" class="primary">连接串口</button>
+  <span class="status"><span class="dot" id="dot"></span><span id="st">未连接</span></span>
+  <span class="spacer"></span>
+  <button id="btnClear">清空曲线</button>
+</div>
+
+<div class="grid">
+  <div class="card" id="card0">
+    <div class="head"><span class="tag" style="background:var(--m0)"></span>
+      <span class="name">M0 · 偏航 yaw（左右）</span><span class="mode" id="mode0">—</span></div>
+    <div class="big"><span class="v" id="ang0">—</span><span class="u">°</span></div>
+    <div class="sub" id="sub0">等待数据</div>
+    <div class="metrics">
+      <div class="m"><span class="k">位置误差</span>
+        <div class="track"><div class="mid"></div><div class="fill" id="e0" style="width:0;background:var(--m0)"></div></div>
+        <span class="v" id="ev0">—</span></div>
+      <div class="m"><span class="k">速度</span>
+        <div class="track"><div class="mid"></div><div class="fill" id="v0" style="width:0;background:var(--m0)"></div></div>
+        <span class="v" id="vv0">—</span></div>
+      <div class="m"><span class="k">电流 iq</span>
+        <div class="track"><div class="mid"></div><div class="fill" id="c0" style="width:0;background:var(--m0)"></div></div>
+        <span class="v" id="cv0">—</span></div>
+    </div>
+  </div>
+
+  <div class="card" id="card1">
+    <div class="head"><span class="tag" style="background:var(--m1)"></span>
+      <span class="name">M1 · 俯仰 pitch（上下）</span><span class="mode" id="mode1">—</span></div>
+    <div class="big"><span class="v" id="ang1">—</span><span class="u">°</span></div>
+    <div class="sub" id="sub1">等待数据</div>
+    <div class="metrics">
+      <div class="m"><span class="k">位置误差</span>
+        <div class="track"><div class="mid"></div><div class="fill" id="e1" style="width:0;background:var(--m1)"></div></div>
+        <span class="v" id="ev1">—</span></div>
+      <div class="m"><span class="k">速度</span>
+        <div class="track"><div class="mid"></div><div class="fill" id="v1" style="width:0;background:var(--m1)"></div></div>
+        <span class="v" id="vv1">—</span></div>
+      <div class="m"><span class="k">电流 iq</span>
+        <div class="track"><div class="mid"></div><div class="fill" id="c1" style="width:0;background:var(--m1)"></div></div>
+        <span class="v" id="cv1">—</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="chartcard">
+  <div class="legend">
+    <span><i style="background:var(--m0)"></i>M0 实际位置</span>
+    <span><i style="background:var(--m0);opacity:.45"></i>M0 目标</span>
+    <span><i style="background:var(--m1)"></i>M1 实际位置</span>
+    <span><i style="background:var(--m1);opacity:.45"></i>M1 目标</span>
+    <span style="margin-left:auto">最近 10 秒 · 单位 rad</span>
+  </div>
+  <canvas id="chart" height="230"></canvas>
+</div>
+
+<div class="paste">
+  <div style="font-size:13px;font-weight:500;margin-bottom:8px">粘贴一行数据快速解码</div>
+  <textarea id="ta" placeholder="把 VOFA 里那一行原样粘进来，例如：&#10;1,0.0000,-0.4080,-0.0800,-0.0518,-0.0511,0,2,0.0000,-0.0046,0.2940,-0.0040,-0.0099,0"></textarea>
+  <div class="hint">粘进去自动解析，不用点按钮。14 个数字 = M0 的 7 个 + M1 的 7 个。</div>
+  <div class="dec" id="dec" style="display:none">
+    <div><h3 style="color:var(--m0)">M0 · 偏航</h3><table id="t0"></table></div>
+    <div><h3 style="color:var(--m1)">M1 · 俯仰</h3><table id="t1"></table></div>
+  </div>
+  <div class="log" id="log"></div>
+</div>
+
+<script>
+const MODE_NAME = ['电流模式','速度模式','位置模式','轨迹模式'];
+const MODE_UNIT = ['A','rad/s','rad','rad'];
+const R2D = 180 / Math.PI;
+
+function wrapDeg(rad){ let d = rad * R2D; return ((d + 180) % 360 + 360) % 360 - 180; }
+function wrapPi(r){ let x = r % (2*Math.PI); if(x > Math.PI) x -= 2*Math.PI; if(x < -Math.PI) x += 2*Math.PI; return x; }
+function faultText(f){
+  if(!f) return '正常';
+  const p = [];
+  if(f & 1) p.push('过流');
+  if(f & 2) p.push('堵转');
+  if(f & 4) p.push('位置超差');
+  if(f & 8) p.push('指令超时');
+  return p.join(' + ') + ' (' + f + ')';
+}
+function parseLine(line){
+  const p = line.split(',');
+  if(p.length < 14) return null;
+  const n = p.map(Number);
+  for(let i=0;i<14;i++) if(!isFinite(n[i])) return null;
+  return {
+    m0:{mode:n[0],tgt:n[1],pos:n[2],vel:n[3],iq:n[4],cmd:n[5],fault:n[6]},
+    m1:{mode:n[7],tgt:n[8],pos:n[9],vel:n[10],iq:n[11],cmd:n[12],fault:n[13]}
+  };
+}
+
+const hist = [];
+let lastData = null;
+const MAX_POINTS = 2400;
+
+function trim(now){ while(hist.length && now - hist[0].t > 10500) hist.shift(); }
+
+function tgtDisplay(m){
+  if(m.mode === 2 || m.mode === 3) return wrapDeg(m.tgt).toFixed(1) + '°';
+  if(m.mode === 1) return m.tgt.toFixed(3) + ' rad/s';
+  return m.tgt.toFixed(3) + ' A';
+}
+
+function paint(side, m){
+  const i = side, pre = side === 0 ? '0' : '1';
+  document.getElementById('mode'+pre).textContent = MODE_NAME[m.mode] || ('模式'+m.mode);
+  document.getElementById('ang'+pre).textContent = wrapDeg(m.pos).toFixed(1);
+
+  const err = (m.mode === 2 || m.mode === 3) ? wrapPi(m.tgt - m.pos) : null;
+  let sub = '目标 ' + tgtDisplay(m);
+  if(err !== null) sub += '　·　误差 ' + (err*R2D).toFixed(1) + '°';
+  sub += '　·　累积 ' + m.pos.toFixed(3) + ' rad';
+  document.getElementById('sub'+pre).textContent = sub;
+
+  const color = side === 0 ? 'var(--m0)' : 'var(--m1)';
+  document.getElementById('e'+pre).style.width = (err === null ? 0 : Math.min(50, Math.abs(err)/Math.PI*50)) + '%';
+  document.getElementById('e'+pre).style.background = color;
+  document.getElementById('ev'+pre).textContent = err === null ? '—' : (err*R2D).toFixed(1) + '°';
+
+  document.getElementById('v'+pre).style.width = Math.min(50, Math.abs(m.vel)/30*50) + '%';
+  document.getElementById('v'+pre).style.background = color;
+  document.getElementById('vv'+pre).textContent = m.vel.toFixed(3);
+
+  document.getElementById('c'+pre).style.width = Math.min(50, Math.abs(m.iq)/2*50) + '%';
+  document.getElementById('c'+pre).style.background = Math.abs(m.iq) > 1.5 ? 'var(--warn)' : color;
+  document.getElementById('cv'+pre).textContent = (m.iq*1000).toFixed(0) + ' mA';
+
+  const card = document.getElementById('card'+pre);
+  card.style.borderColor = m.fault ? 'var(--warn)' : 'var(--line)';
+}
+
+function accept(d){
+  lastData = d;
+  paint(0, d.m0); paint(1, d.m1);
+  const now = performance.now();
+  hist.push({t:now, a0:d.m0.pos, b0:d.m0.tgt, a1:d.m1.pos, b1:d.m1.tgt});
+  if(hist.length > MAX_POINTS) hist.shift();
+  trim(now);
+  if(d.m0.fault || d.m1.fault){
+    const msg = (d.m0.fault ? 'M0 ' + faultText(d.m0.fault) + '　' : '') +
+                (d.m1.fault ? 'M1 ' + faultText(d.m1.fault) : '');
+    logLine('[故障] ' + msg, true);
+  }
+}
+
+const logEl = document.getElementById('log');
+let lastLog = '';
+function logLine(s, warn){
+  if(s === lastLog) return;
+  lastLog = s;
+  const div = document.createElement('div');
+  div.innerHTML = warn ? '<b></b>' : '';
+  if(warn) div.firstChild.textContent = s; else div.textContent = s;
+  logEl.prepend(div);
+  while(logEl.childElementCount > 8) logEl.lastChild.remove();
+}
+
+function handleLine(raw){
+  const line = raw.trim();
+  if(!line) return;
+  if(/^[-\d]/.test(line)){
+    const d = parseLine(line);
+    if(d) accept(d);
+    return;
+  }
+  if(line.startsWith('[')) logLine(line, /FAULT|STUCK|ERR|ENC/.test(line));
+}
+
+const cv = document.getElementById('chart');
+const ctx = cv.getContext('2d');
+function drawChart(){
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = 230;
+  if(cv.width !== Math.round(w*dpr) || cv.height !== Math.round(h*dpr)){
+    cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr);
+  }
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,w,h);
+
+  const css = getComputedStyle(document.documentElement);
+  const lineC = css.getPropertyValue('--line').trim() || '#e4e4dd';
+  const tx2 = css.getPropertyValue('--tx2').trim() || '#70706a';
+  const c0 = css.getPropertyValue('--m0').trim() || '#378ADD';
+  const c1 = css.getPropertyValue('--m1').trim() || '#1D9E75';
+
+  const padL = 42, padR = 10, padT = 10, padB = 22;
+  const iw = w - padL - padR, ih = h - padT - padB;
+
+  let lo = Infinity, hi = -Infinity;
+  for(const p of hist){
+    for(const v of [p.a0, p.b0, p.a1, p.b1]){
+      if(v < lo) lo = v; if(v > hi) hi = v;
+    }
+  }
+  if(!isFinite(lo)){ lo = -1; hi = 1; }
+  if(hi - lo < 0.2){ const m = (hi+lo)/2; lo = m - 0.1; hi = m + 0.1; }
+  const pad = (hi - lo) * 0.12; lo -= pad; hi += pad;
+
+  const now = performance.now(), t0 = now - 10000;
+  const X = t => padL + Math.max(0, Math.min(1, (t - t0) / 10000)) * iw;
+  const Y = v => padT + ih - (v - lo) / (hi - lo) * ih;
+
+  ctx.strokeStyle = lineC; ctx.lineWidth = 1;
+  ctx.font = '11px system-ui,sans-serif'; ctx.fillStyle = tx2; ctx.textAlign = 'right';
+  for(let k=0;k<=4;k++){
+    const y = padT + ih * k / 4;
+    const val = hi - (hi - lo) * k / 4;
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w-padR, y); ctx.stroke();
+    ctx.fillText(val.toFixed(2), padL - 7, y + 4);
+  }
+
+  function series(key, color, dash){
+    if(hist.length < 2) return;
+    ctx.beginPath();
+    ctx.strokeStyle = color; ctx.lineWidth = dash ? 1 : 1.6;
+    ctx.setLineDash(dash ? [4,4] : []);
+    ctx.lineJoin = 'round';
+    let started = false;
+    for(const p of hist){
+      const x = X(p.t), y = Y(p[key]);
+      if(!started){ ctx.moveTo(x,y); started = true; }
+      else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  series('b0', c0, true);
+  series('b1', c1, true);
+  series('a0', c0, false);
+  series('a1', c1, false);
+
+  if(!hist.length){
+    ctx.fillStyle = tx2; ctx.textAlign = 'center'; ctx.font = '12px system-ui,sans-serif';
+    ctx.fillText('连接串口或粘贴数据后，这里会实时画出位置跟踪曲线', w/2, h/2);
+  }
+}
+function loop(){ drawChart(); requestAnimationFrame(loop); }
+requestAnimationFrame(loop);
+
+const ta = document.getElementById('ta');
+ta.addEventListener('input', () => {
+  const lines = ta.value.split('\n').map(s=>s.trim()).filter(Boolean);
+  const d = parseLine(lines[lines.length-1] || '');
+  if(!d){ document.getElementById('dec').style.display = 'none'; return; }
+  document.getElementById('dec').style.display = 'grid';
+  const rows = [
+    ['模式', m => MODE_NAME[m.mode] || m.mode],
+    ['目标', m => tgtDisplay(m)],
+    ['实际位置', m => wrapDeg(m.pos).toFixed(1) + '°'],
+    ['累积角', m => m.pos.toFixed(4) + ' rad'],
+    ['位置误差', m => (m.mode===2||m.mode===3) ? (wrapPi(m.tgt-m.pos)*R2D).toFixed(1)+'°' : '—'],
+    ['速度', m => m.vel.toFixed(4) + ' rad/s'],
+    ['实际电流', m => (m.iq*1000).toFixed(0) + ' mA'],
+    ['电流指令', m => (m.cmd*1000).toFixed(0) + ' mA'],
+    ['故障', m => faultText(m.fault)],
+  ];
+  for(const [pre, m] of [['0', d.m0], ['1', d.m1]]){
+    const tb = document.getElementById('t'+pre);
+    tb.innerHTML = rows.map(([k,f]) => '<tr><td>'+k+'</td><td>'+f(m)+'</td></tr>').join('');
+  }
+  accept(d);
+});
+
+document.getElementById('btnClear').onclick = () => { hist.length = 0; };
+
+let port = null, reader = null, reading = false;
+const dot = document.getElementById('dot'), st = document.getElementById('st'), btn = document.getElementById('btnConn');
+
+if(!('serial' in navigator)){
+  st.textContent = '此环境读不到串口 · 用 Chrome/Edge 打开本文件即可实时连接；下方粘贴解码随时可用';
+  dot.className = 'dot err';
+  btn.disabled = true;
+}
+
+btn.onclick = async () => {
+  if(reading){
+    reading = false;
+    try{ if(reader) await reader.cancel(); }catch(e){}
+    try{ if(port) await port.close(); }catch(e){}
+    btn.textContent = '连接串口'; dot.className = 'dot'; st.textContent = '未连接';
+    return;
+  }
+  try{
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200 });
+    reading = true;
+    btn.textContent = '断开'; dot.className = 'dot on'; st.textContent = '已连接 115200';
+    const dec = new TextDecoderStream();
+    port.readable.pipeTo(dec.writable).catch(()=>{});
+    reader = dec.readable.getReader();
+    let buf = '';
+    while(reading){
+      const {value, done} = await reader.read();
+      if(done) break;
+      buf += value;
+      let i;
+      while((i = buf.indexOf('\n')) >= 0){
+        handleLine(buf.slice(0, i));
+        buf = buf.slice(i + 1);
+      }
+      if(buf.length > 4096) buf = '';
+    }
+  }catch(e){
+    reading = false;
+    dot.className = 'dot err';
+    st.textContent = '连接失败：' + (e && e.message ? e.message : e);
+    btn.textContent = '连接串口';
+  }
+};
+</script>
+</body>
+</html>

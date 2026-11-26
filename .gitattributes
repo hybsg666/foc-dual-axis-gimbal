@@ -1,0 +1,16 @@
+# STM32 工程含 GBK 编码源文件，统一按原始字节存储，禁止任何换行符/编码转换
+* -text
+
+# 二进制资源
+*.stl binary
+*.step binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
+*.zip binary
+*.bin binary
+*.hex binary
+*.elf binary
+*.axf binary
